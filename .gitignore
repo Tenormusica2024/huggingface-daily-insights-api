@@ -7,3 +7,10 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+
+# Local session / scratch files
+.letta/
+CLAUDE.md
+
+# Generated CSV snapshots (published as GitHub Release assets instead of committed)
+snapshots/
