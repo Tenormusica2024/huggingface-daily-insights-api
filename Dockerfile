@@ -19,9 +19,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src ./src
 COPY sql ./sql
 
+# 非rootユーザーで実行（コンテナセキュリティのベストプラクティス）
+RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app
+USER appuser
+
 # Cloud Run は $PORT を注入する（デフォルト 8080）
 ENV PORT=8080
+ENV PYTHONPATH=/app/src
 EXPOSE 8080
 
 # uvicorn を直接起動（1ワーカー。Cloud Run は水平スケール前提）
-CMD exec uvicorn src.api:app --host 0.0.0.0 --port ${PORT}
+CMD exec uvicorn api:app --host 0.0.0.0 --port ${PORT}
