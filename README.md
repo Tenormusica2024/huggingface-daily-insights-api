@@ -1,49 +1,74 @@
 # HuggingFace Daily Insights API
 
-Track trending AI models on HuggingFace and recent arXiv papers via a REST API — with **historical time-series data** that the official HuggingFace API does not provide.
+[![Daily Crawl](https://github.com/Tenormusica2024/huggingface-daily-insights-api/actions/workflows/daily_crawl.yml/badge.svg)](https://github.com/Tenormusica2024/huggingface-daily-insights-api/actions/workflows/daily_crawl.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Available on RapidAPI**: https://rapidapi.com/dragonrondo/api/huggingface-daily-insights-api
+An open-source data pipeline that tracks HuggingFace trending models, arXiv AI/ML papers, and LMArena ELO rankings — storing daily snapshots so you can query **historical time-series data** that the upstream sources do not expose.
 
-**Base URL**: https://web-production-af174.up.railway.app
+**Free to self-host. Free to fork. Free to use the daily CSV dumps.**
+
+> ⚠️ **Disclaimer**: This project is **not affiliated with HuggingFace, arXiv, or LMArena**. All data is aggregated from public sources; please respect the terms of the original providers.
 
 ---
 
-## Why This API?
+## Why this exists
 
-The official HuggingFace API returns only the current state of a model (likes, downloads, tags). It provides no history. This API crawls HuggingFace daily and stores snapshots in a database, enabling:
+The HuggingFace Hub API returns only the **current** state of a model (likes, downloads, tags). No history. This project crawls the Hub daily and stores snapshots so you can answer questions like:
 
-- **Trend detection**: Which models gained the most likes over the past 7/30/90 days?
-- **Discovery**: Which models were first published this week?
-- **Time-series analysis**: How did a specific model's popularity change over time?
+- Which models gained the most likes over the past 7 / 30 / 90 days?
+- Which models were published this week?
+- How did a specific model's popularity evolve over time?
+
+Similar gaps are filled for arXiv (recent AI/ML papers) and LMArena (ELO rankings over time).
+
+---
+
+## How to use the data
+
+There are three ways to consume the data. Pick whichever fits your use case.
+
+### 1. Daily CSV snapshots (easiest — no API, no setup)
+
+Every day at 00:00 UTC, the GitHub Actions pipeline publishes a new GitHub Release with CSV dumps attached as assets.
+
+- Latest release: <https://github.com/Tenormusica2024/huggingface-daily-insights-api/releases/latest>
+- Tag format: `snapshot-YYYY-MM-DD`
+- Files: `models.csv`, `model_snapshots.csv` (last 30 days), `papers.csv`, `arena_rankings.csv`
+
+```bash
+# Example: fetch the latest snapshot via gh CLI
+gh release download -R Tenormusica2024/huggingface-daily-insights-api --pattern '*.csv'
+```
+
+### 2. Self-host the API (recommended for integrations)
+
+Fork / clone this repo, provision a Supabase project, and deploy the FastAPI service anywhere that runs a container (Cloud Run, Fly.io, Render, your own VPS). See [Self-hosting](#self-hosting) below.
+
+### 3. Query the database directly (if you enable public read access)
+
+If you configure your Supabase project with a read-only `anon` key and appropriate RLS policies, anyone can run SQL queries against the same database the API uses. This is optional and up to the operator.
 
 ---
 
 ## Endpoints
 
+The self-hosted API exposes the following endpoints. Replace `${BASE_URL}` with your deployment URL.
+
 ### `GET /health`
-
 Returns service status.
-
 ```
 GET /health
 → {"status": "ok"}
 ```
 
----
-
 ### `GET /models/trending`
-
-Returns models ranked by likes increase over the past N days.
+Models ranked by likes increase over the past N days.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `pipeline_tag` | string | — | Filter by task type (e.g. `text-generation`) |
 | `days` | int | 7 | Lookback window (1–90) |
 | `limit` | int | 20 | Max results (1–100) |
-
-```
-GET /models/trending?days=7&limit=3
-```
 
 ```json
 [
@@ -54,33 +79,14 @@ GET /models/trending?days=7&limit=3
     "likes_delta": 33,
     "snapshot_date_from": "2026-02-24",
     "snapshot_date_to": "2026-02-27"
-  },
-  {
-    "model_id": "google/translategemma-4b-it",
-    "pipeline_tag": "image-text-to-text",
-    "likes_latest": 643,
-    "likes_delta": 12,
-    "snapshot_date_from": "2026-02-24",
-    "snapshot_date_to": "2026-02-27"
-  },
-  {
-    "model_id": "stabilityai/stable-diffusion-xl-base-1.0",
-    "pipeline_tag": "text-to-image",
-    "likes_latest": 7473,
-    "likes_delta": 8,
-    "snapshot_date_from": "2026-02-24",
-    "snapshot_date_to": "2026-02-27"
   }
 ]
 ```
 
-**Available pipeline tags**: `text-generation`, `text2text-generation`, `image-text-to-text`, `text-to-image`
-
----
+Available pipeline tags: `text-generation`, `text2text-generation`, `image-text-to-text`, `text-to-image`
 
 ### `GET /models/new`
-
-Returns models first seen within the past N days.
+Models first seen within the past N days.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
@@ -88,82 +94,16 @@ Returns models first seen within the past N days.
 | `days` | int | 7 | Lookback window (1–90) |
 | `limit` | int | 20 | Max results (1–100) |
 
-```
-GET /models/new?days=4&limit=3
-```
-
-```json
-[
-  {
-    "id": "unsloth/Qwen3.5-35B-A3B-GGUF",
-    "name": "Qwen3.5-35B-A3B-GGUF",
-    "author": "unsloth",
-    "pipeline_tag": "image-text-to-text",
-    "first_seen_at": "2026-02-26T01:02:11.396791+00:00"
-  },
-  {
-    "id": "Qwen/Qwen3.5-27B",
-    "name": "Qwen3.5-27B",
-    "author": "Qwen",
-    "pipeline_tag": "image-text-to-text",
-    "first_seen_at": "2026-02-25T01:10:33.171452+00:00"
-  },
-  {
-    "id": "Qwen/Qwen3.5-122B-A10B",
-    "name": "Qwen3.5-122B-A10B",
-    "author": "Qwen",
-    "pipeline_tag": "image-text-to-text",
-    "first_seen_at": "2026-02-25T01:10:27.512855+00:00"
-  }
-]
-```
-
----
-
 ### `GET /models/{model_id}/history`
-
-Returns daily snapshots for a specific model (likes, downloads, tags over time).
+Daily snapshots for a specific model (likes, downloads, tags over time).
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `model_id` | path | required | HuggingFace model ID (e.g. `Qwen/Qwen2.5-7B-Instruct`) |
 | `limit` | int | 30 | Max snapshot records (1–180) |
 
-```
-GET /models/Nanbeige/Nanbeige4.1-3B/history?limit=3
-```
-
-```json
-[
-  {
-    "snapshot_date": "2026-02-27",
-    "downloads_30d": 255172,
-    "likes": 811,
-    "pipeline_tag": "text-generation",
-    "tags": ["transformers", "safetensors", "llama", "text-generation", "llm", "conversational"]
-  },
-  {
-    "snapshot_date": "2026-02-26",
-    "downloads_30d": 255172,
-    "likes": 805,
-    "pipeline_tag": "text-generation",
-    "tags": ["transformers", "safetensors", "llama", "text-generation", "llm", "conversational"]
-  },
-  {
-    "snapshot_date": "2026-02-25",
-    "downloads_30d": 202462,
-    "likes": 778,
-    "pipeline_tag": "text-generation",
-    "tags": ["transformers", "safetensors", "llama", "text-generation", "llm", "conversational"]
-  }
-]
-```
-
----
-
 ### `GET /papers/recent`
-
-Returns recently submitted arXiv papers in AI/ML.
+Recently submitted arXiv papers in AI/ML.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
@@ -171,60 +111,17 @@ Returns recently submitted arXiv papers in AI/ML.
 | `days` | int | 7 | Lookback window (1–90) |
 | `limit` | int | 20 | Max results (1–100) |
 
-```
-GET /papers/recent?category=cs.CV&days=3&limit=2
-```
-
-```json
-[
-  {
-    "arxiv_id": "2602.22212",
-    "title": "Neu-PiG: Neural Preconditioned Grids for Fast Dynamic Surface Reconstruction on Long Sequences",
-    "authors": ["Julian Kaltheuner", "Hannah Dröge", "Markus Plack", "Patrick Stotko", "Reinhard Klein"],
-    "submitted_at": "2026-02-25T18:59:53+00:00",
-    "category": "cs.CV",
-    "pwc_sota_flag": false
-  },
-  {
-    "arxiv_id": "2602.22209",
-    "title": "WHOLE: World-Grounded Hand-Object Lifted from Egocentric Videos",
-    "authors": ["Yufei Ye", "Jiaman Li", "Ryan Rong", "C. Karen Liu"],
-    "submitted_at": "2026-02-25T18:59:10+00:00",
-    "category": "cs.CV",
-    "pwc_sota_flag": false
-  }
-]
-```
-
-**Available categories**: `cs.AI`, `cs.LG`, `cs.CL`, `cs.CV`, `stat.ML`
-
----
+Available categories: `cs.AI`, `cs.LG`, `cs.CL`, `cs.CV`, `stat.ML`
 
 ### `GET /arena/rankings`
-
-Returns LMArena ELO rankings from the latest available snapshot.
+LMArena ELO rankings from the latest available snapshot.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `limit` | int | 50 | Max results (1–200) |
 | `snapshot_date` | string | — | Specific date (YYYY-MM-DD). Defaults to latest. |
 
-```
-GET /arena/rankings?limit=10
-```
-
-```json
-[
-  {
-    "snapshot_date": "2025-08-29",
-    "model_name": "gemini-2.5-pro",
-    "rank": 1,
-    "elo_score": 1466
-  }
-]
-```
-
-**Note**: Source data (`lmarena-ai/lmarena-leaderboard` HF Space) is updated irregularly. Latest available snapshot: 2025-08-29.
+> **Note on LMArena data freshness**: The upstream source (`lmarena-ai/lmarena-leaderboard` HF Space) publishes new ELO results irregularly — sometimes months between updates. As a result, this endpoint may serve a snapshot several months old. Check `snapshot_date` in the response.
 
 ---
 
@@ -232,36 +129,93 @@ GET /arena/rankings?limit=10
 
 ```
 GitHub Actions (daily, UTC 00:00 / JST 09:00)
-  ├── crawl_hf.py     → HuggingFace Hub API → models / model_snapshots (Supabase)
-  ├── crawl_arxiv.py  → arXiv Atom XML API  → papers (Supabase)
-  └── crawl_arena.py  → lmarena-ai HF Space → arena_rankings (Supabase)
+  ├── crawl_hf.py              → HuggingFace Hub API → models / model_snapshots (Supabase)
+  ├── crawl_arxiv.py           → arXiv Atom XML API  → papers (Supabase)
+  ├── crawl_arena.py           → lmarena-ai HF Space → arena_rankings (Supabase)
+  └── export_daily_snapshot.py → Supabase → CSV → GitHub Releases
 
-Railway (FastAPI + uvicorn)
-  └── Serves API requests from Supabase
+Container host (Cloud Run / Fly.io / Render / VPS)
+  └── FastAPI + uvicorn → Supabase (PostgreSQL)
 ```
 
-**Data collection**:
+**Data collection scope**:
 - HuggingFace: top 200 models per pipeline tag, 4 tags daily
 - arXiv: top 100 papers per category, 5 categories daily
 - Retention: indefinite (time-series accumulates daily)
 
 ---
 
-## Tech Stack
+## Self-hosting
+
+### Prerequisites
+- Python 3.11+
+- A [Supabase](https://supabase.com) project (free tier is plenty)
+- A container host (Cloud Run, Fly.io, Render, etc.) or local uvicorn
+
+### 1. Create the database schema
+Run `sql/schema.sql` in the Supabase SQL editor. This creates `models`, `model_snapshots`, `papers`, and `arena_rankings` tables with the required indexes.
+
+### 2. Configure environment variables
+```bash
+SUPABASE_URL=https://<your-project>.supabase.co
+SUPABASE_KEY=<service_role_key>  # needed for crawlers to write
+```
+
+For read-only API deployments you can use the `anon` key instead — but you'll need to configure RLS policies to allow SELECT on the relevant tables.
+
+### 3. Run the crawlers (one-off or via GitHub Actions)
+```bash
+python src/crawl_hf.py
+python src/crawl_arxiv.py
+python src/crawl_arena.py
+```
+
+To enable the daily GitHub Actions pipeline, add `SUPABASE_URL` and `SUPABASE_KEY` as repository secrets.
+
+### 4. Run the API locally
+```bash
+pip install -r requirements.txt
+uvicorn src.api:app --reload
+```
+
+### 5. Deploy the API container
+```bash
+# Cloud Run (recommended — generous free tier)
+gcloud run deploy hf-insights --source . \
+  --region asia-northeast1 \
+  --allow-unauthenticated \
+  --set-env-vars SUPABASE_URL=...,SUPABASE_KEY=...
+
+# Or docker build locally
+docker build -t hf-insights .
+docker run -p 8080:8080 --env-file .env hf-insights
+```
+
+---
+
+## Tech stack
 
 - **Runtime**: Python 3.11
 - **Framework**: FastAPI + uvicorn
 - **Database**: Supabase (PostgreSQL)
-- **Hosting**: Railway
-- **CI/CD**: GitHub Actions (daily crawl + on-push deploy)
+- **Container**: Docker (Cloud Run / Fly.io / Render compatible)
+- **CI/CD**: GitHub Actions (daily crawl + Release publishing)
 
 ---
 
-## RapidAPI Plans
+## Contributing
 
-| Plan | Price | Quota |
-|---|---|---|
-| Free | $0 | 100 requests/month |
-| PRO | $9/month | 1,000 requests/month |
+Issues and PRs welcome. Noteworthy ideas:
 
-https://rapidapi.com/dragonrondo/api/huggingface-daily-insights-api
+- Adding more pipeline tags (audio, video, etc.)
+- Hooking up PapersWithCode SotA flags (`pwc_sota_flag`, `pwc_id` are in the schema but not populated yet)
+- LLM-generated business impact scores (`business_score`, `business_summary` columns are reserved for this)
+- Alternative LMArena data sources (current source updates irregularly)
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+Data attribution: HuggingFace model metadata © respective authors / Hugging Face. arXiv paper metadata © respective authors (arXiv.org non-exclusive license). LMArena rankings © LMSYS.

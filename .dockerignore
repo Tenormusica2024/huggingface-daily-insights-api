@@ -1,0 +1,16 @@
+.git
+.github
+.env
+.env.*
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.letta
+CLAUDE.md
+README.md
+Procfile
+runtime.txt
+*.md
