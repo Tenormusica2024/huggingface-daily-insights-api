@@ -48,11 +48,15 @@ Fork / clone this repo, provision a Supabase project, and deploy the FastAPI ser
 
 If you configure your Supabase project with a read-only `anon` key and appropriate RLS policies, anyone can run SQL queries against the same database the API uses. This is optional and up to the operator.
 
+A reference RLS policy script is provided at [`sql/migrations/optional/002_public_read_policies.sql`](sql/migrations/optional/002_public_read_policies.sql). It is placed under `optional/` to signal that the default deployment does **not** apply it — operators who want direct DB read access must opt in explicitly.
+
 ---
 
 ## Endpoints
 
 The self-hosted API exposes the following endpoints. Replace `${BASE_URL}` with your deployment URL.
+
+> **CORS & access model**: This API is a **read-only public service**. The default CORS policy allows `GET` requests from **any origin** (`allow_origins=["*"]`) so that static dashboards and notebooks can call it without a proxy. If you fork and deploy your own instance behind authentication, edit `app.add_middleware(CORSMiddleware, ...)` in `src/api.py` to restrict origins accordingly.
 
 ### `GET /health`
 Returns service status.

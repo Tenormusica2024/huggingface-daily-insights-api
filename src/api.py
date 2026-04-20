@@ -18,7 +18,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import TARGET_PIPELINE_TAGS, LIMIT_PER_TAG
 from db import get_supabase
 
-# crawl_hf.py の LIMIT_PER_TAG に合わせた上限 + バッファ（クロール上限超えのモデルも拾う）
+# 1 日 1 タグあたりのスナップショット行数の見積もり上限。
+# 実体は crawl_hf.py の LIMIT_PER_TAG で頭打ちされる（クロール側は 200 件で切るため、
+# この +50 バッファはクロール側の上限を引き上げる意味はない）。
+# 目的は trending クエリの row_cap 計算における安全側の見積もり（pipeline_tag 変動・
+# 将来 LIMIT_PER_TAG を引き上げた場合の緩衝）であり、実取得件数には影響しない。
 _MODELS_PER_TAG = LIMIT_PER_TAG + 50
 # config.py の TARGET_PIPELINE_TAGS から自動計算（手動同期不要）
 _N_PIPELINE_TAGS = len(TARGET_PIPELINE_TAGS)
@@ -162,7 +166,9 @@ def get_history(
 @app.get("/arena/rankings")
 def get_arena_rankings(
     limit: int = Query(50, ge=1, le=200, description="Max results"),
-    snapshot_date: Optional[str] = Query(None, description="Specific date (YYYY-MM-DD). Defaults to latest."),
+    snapshot_date: Optional[date] = Query(
+        None, description="Specific date (YYYY-MM-DD). Defaults to latest."
+    ),
 ):
     """
     Return LMArena ELO rankings.
@@ -172,7 +178,7 @@ def get_arena_rankings(
     sb = get_supabase()
 
     # 指定がなければ最新の snapshot_date を使用
-    if not snapshot_date:
+    if snapshot_date is None:
         try:
             latest_resp = (
                 sb.table("arena_rankings")
@@ -185,13 +191,15 @@ def get_arena_rankings(
             raise HTTPException(status_code=503, detail="Database unavailable") from e
         if not latest_resp.data:
             raise HTTPException(status_code=404, detail="No arena rankings data available yet")
-        snapshot_date = latest_resp.data[0]["snapshot_date"]
+        snapshot_date_str = latest_resp.data[0]["snapshot_date"]
+    else:
+        snapshot_date_str = snapshot_date.isoformat()
 
     try:
         resp = (
             sb.table("arena_rankings")
             .select("snapshot_date, model_name, rank, elo_score")
-            .eq("snapshot_date", snapshot_date)
+            .eq("snapshot_date", snapshot_date_str)
             .order("rank", desc=False)
             .limit(limit)
             .execute()
@@ -199,7 +207,7 @@ def get_arena_rankings(
     except Exception as e:
         raise HTTPException(status_code=503, detail="Database unavailable") from e
     if not resp.data:
-        raise HTTPException(status_code=404, detail=f"No rankings found for {snapshot_date}")
+        raise HTTPException(status_code=404, detail=f"No rankings found for {snapshot_date_str}")
     return resp.data
 
 

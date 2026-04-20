@@ -12,14 +12,15 @@ LMArena ELO ランキング日次クロールスクリプト
 
 import logging
 import pickle
+import re
 import sys
 import tempfile
-import re
 from datetime import date
 
 from huggingface_hub import hf_hub_download, list_repo_files
 from supabase import Client
 
+from config import ERROR_RATE_THRESHOLD
 from db import get_supabase
 
 logging.basicConfig(
@@ -44,7 +45,9 @@ def list_elo_pkl_files() -> list[tuple[str, date]]:
     files = list_repo_files(_HF_SPACE_ID, repo_type="space")
     results = []
     for fname in files:
-        m = _PKL_PATTERN.match(fname)
+        # list_repo_files はサブディレクトリ配下のパスも返しうるため basename で判定する
+        basename = fname.rsplit("/", 1)[-1]
+        m = _PKL_PATTERN.match(basename)
         if m:
             d = date(int(m.group(1)[:4]), int(m.group(1)[4:6]), int(m.group(1)[6:8]))
             results.append((fname, d))
@@ -77,7 +80,11 @@ def download_and_parse_pkl(filename: str, snapshot_date: date) -> list[dict]:
             local_dir=tmpdir,
         )
         with open(local_path, "rb") as f:
-            data = pickle.load(f)
+            # SECURITY: pickle.load は任意コード実行の典型経路。
+            # 信頼の前提は「lmarena-ai/lmarena-leaderboard HF Space 運営」のみ。
+            # 上流が侵害された場合は本プロセスで RCE に至るため、運用上は Cloud Run /
+            # GitHub Actions の IAM を最小権限に保ち、影響範囲を限定する。
+            data = pickle.load(f)  # noqa: S301
 
     # text/full/leaderboard_table_df を取得
     # 構造: data[category][subcategory]["leaderboard_table_df"] = DataFrame
@@ -160,8 +167,10 @@ def crawl() -> None:
 
     if total_ok + total_err > 0:
         error_rate = total_err / (total_ok + total_err)
-        if error_rate > 0.1:
-            logger.error(f"Error rate {error_rate:.1%} exceeded 10% — exiting with code 1")
+        if error_rate > ERROR_RATE_THRESHOLD:
+            logger.error(
+                f"Error rate {error_rate:.1%} exceeded {ERROR_RATE_THRESHOLD:.0%} — exiting with code 1"
+            )
             sys.exit(1)
 
 

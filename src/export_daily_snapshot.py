@@ -63,7 +63,12 @@ def fetch_all(table: str, columns: str, order_col: str, filters: dict | None = N
 
 
 def write_csv(rows: list[dict], out_path: Path) -> None:
-    """辞書リストを CSV に書き出す。空配列でもヘッダー無しの空ファイルを作らず、ヘッダーのみ行を書く。"""
+    """辞書リストを CSV に書き出す。
+
+    rows が空の場合は空ファイルを出力する（DictWriter はサンプル行から fieldnames を推定する都合上、
+    事前定義なしではヘッダー行を書けないため）。Release アセットとしては「該当データなし」を
+    サイレント成功とせず、WARNING ログで検知可能にする。
+    """
     if not rows:
         logger.warning(f"  (empty) {out_path.name}")
         out_path.write_text("", encoding="utf-8")

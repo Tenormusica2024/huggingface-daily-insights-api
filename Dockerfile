@@ -28,5 +28,12 @@ ENV PORT=8080
 ENV PYTHONPATH=/app/src
 EXPOSE 8080
 
+# Cloud Run は独自のヘルスチェックを持つため必須ではないが、Fly.io / Render / 自前 VPS 等の
+# 他ランタイムでの可搬性向上のために定義する。/health は FastAPI の軽量エンドポイント。
+# curl は slim イメージに含まれないため Python 標準ライブラリで実装する。
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD python -c "import os,sys,urllib.request; \
+sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8080')+'/health', timeout=3).status==200 else 1)" || exit 1
+
 # uvicorn を直接起動（1ワーカー。Cloud Run は水平スケール前提）
 CMD exec uvicorn api:app --host 0.0.0.0 --port ${PORT}
