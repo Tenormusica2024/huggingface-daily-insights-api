@@ -40,6 +40,17 @@ Every day at 00:00 UTC, the GitHub Actions pipeline publishes a new GitHub Relea
 gh release download -R Tenormusica2024/huggingface-daily-insights-api --pattern '*.csv'
 ```
 
+
+### 1.5 Static dashboard (GitHub Pages)
+
+A zero-backend dashboard is available from the `docs/` directory and is designed for GitHub Pages:
+
+- Dashboard: <https://tenormusica2024.github.io/huggingface-daily-insights-api/>
+- It fetches the latest GitHub Release metadata and reads the CSV assets client-side.
+- No hosted API or server-side secret is required.
+
+If you fork this repo, enable GitHub Pages with the included `Deploy GitHub Pages dashboard` workflow.
+
 ### 2. Self-host the API (recommended for integrations)
 
 Fork / clone this repo, provision a Supabase project, and deploy the FastAPI service anywhere that runs a container (Cloud Run, Fly.io, Render, your own VPS). See [Self-hosting](#self-hosting) below.
