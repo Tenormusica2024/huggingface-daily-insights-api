@@ -18,6 +18,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Arena pickle parsing runs untrusted upstream pickle code; do not
+          # leave a write-capable Git credential in the workspace.
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -40,11 +44,14 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python src/crawl_arxiv.py
 
-      - name: Run Arena crawl
+      - name: Parse Arena pickle to JSON (no Supabase secrets)
+        run: python src/crawl_arena.py --export-json arena_rankings_import.json
+
+      - name: Import Arena rankings JSON
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python src/crawl_arena.py
+        run: python src/crawl_arena.py --import-json arena_rankings_import.json
 
       - name: Compute snapshot date
         id: snapshot
