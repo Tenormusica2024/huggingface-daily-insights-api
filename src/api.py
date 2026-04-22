@@ -26,9 +26,12 @@ from db import get_supabase
 _MODELS_PER_TAG = LIMIT_PER_TAG + 50
 # config.py の TARGET_PIPELINE_TAGS から自動計算（手動同期不要）
 _N_PIPELINE_TAGS = len(TARGET_PIPELINE_TAGS)
-# LIMIT_PER_TAG(200) × N_PIPELINE_TAGS(4) × days(25) 相当の絶対上限
-# 上限超えは trending 精度の低下と引き換えに DB 負荷を抑制する
-_ROW_CAP_MAX = 20_000
+# Supabase/PostgREST は 1 回のレスポンスで返る行数に上限があるため、
+# trending では明示的に range ページングする。90 日 × 4 タグ × 250 件/日
+# 程度を想定した安全上限。これを超える場合は不完全なランキングを返さず
+# 503 として運用者に row cap / 集計方法の見直しを促す。
+_PAGE_SIZE = 1000
+_TRENDING_HARD_ROW_CAP = 100_000
 
 app = FastAPI(
     title="HuggingFace Daily Insights API",
@@ -65,23 +68,30 @@ def get_trending(
     # pipeline_tag 指定なし = 全タグが対象。タグ数分のモデルを見込んで行数上限を設定
     # days × (1タグのモデル数上限) × (対象タグ数) でウィンドウ内の全スナップを取得できる
     tag_multiplier = 1 if pipeline_tag else _N_PIPELINE_TAGS
-    row_cap = min(days * _MODELS_PER_TAG * tag_multiplier, _ROW_CAP_MAX)
+    estimated_rows = days * _MODELS_PER_TAG * tag_multiplier
+    row_cap = min(max(estimated_rows, _PAGE_SIZE), _TRENDING_HARD_ROW_CAP)
 
     query = (
         sb.table("model_snapshots")
         .select("model_id, snapshot_date, likes, pipeline_tag")
         .gte("snapshot_date", cutoff)
         .order("snapshot_date", desc=False)
-        .limit(row_cap)
     )
     if pipeline_tag:
         query = query.eq("pipeline_tag", pipeline_tag)
 
     try:
-        resp = query.execute()
+        rows = _fetch_range_pages(query, max_rows=row_cap + 1)
     except Exception as e:
         raise HTTPException(status_code=503, detail="Database unavailable") from e
-    rows = resp.data
+    if len(rows) > row_cap:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Trending query exceeded safe row cap; reduce days/pipeline_tag "
+                "or move aggregation into the database"
+            ),
+        )
 
     # model_id ごとにスナップショットをまとめて likes の増分（最新 - 最古）を計算
     model_snapshots: dict[str, list] = defaultdict(list)
@@ -106,6 +116,29 @@ def get_trending(
 
     deltas.sort(key=lambda x: x["likes_delta"], reverse=True)
     return deltas[:limit]
+
+
+def _fetch_range_pages(query, max_rows: int) -> list[dict]:
+    """
+    Supabase query builder を range ページングで取得する。
+
+    PostgREST はサーバ側上限により `.limit(n)` だけでは大きい窓の全件が
+    返らないことがあるため、trending のように時系列窓全体が必要な用途では
+    明示的にページングする。
+    """
+    rows: list[dict] = []
+    offset = 0
+    while offset < max_rows:
+        upper = min(offset + _PAGE_SIZE - 1, max_rows - 1)
+        resp = query.range(offset, upper).execute()
+        page = resp.data or []
+        if not page:
+            break
+        rows.extend(page)
+        if len(page) < _PAGE_SIZE:
+            break
+        offset += _PAGE_SIZE
+    return rows
 
 
 @app.get("/models/new")

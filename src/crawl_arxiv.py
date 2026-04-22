@@ -51,6 +51,9 @@ def fetch_arxiv_papers(category: str, limit: int = PAPERS_PER_CATEGORY) -> list[
     except requests.RequestException as e:
         logger.error(f"arXiv API fetch failed for {category}: {e}")
         return []
+    except ET.ParseError as e:
+        logger.error(f"arXiv API returned invalid XML for {category}: {e}")
+        return []
 
 
 def _parse_arxiv_xml(xml_text: str) -> list[dict]:
