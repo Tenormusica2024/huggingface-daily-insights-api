@@ -82,6 +82,53 @@ class ArenaJsonModeTests(unittest.TestCase):
         self.assertEqual(fake_sb.rankings.rows, rows)
         parse_pkl.assert_not_called()
 
+    def test_import_json_rejects_unexpected_keys_before_supabase(self):
+        rows = [
+            {
+                "snapshot_date": "2026-04-20",
+                "model_name": "model-a",
+                "rank": 1,
+                "elo_score": 1200,
+                "unexpected": "do-not-forward",
+            }
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            in_path = Path(tmp) / "arena.json"
+            in_path.write_text(json.dumps(rows), encoding="utf-8")
+            with patch.object(crawl_arena, "get_supabase") as get_supabase:
+                with self.assertRaises(ValueError):
+                    crawl_arena.import_rankings_json(in_path)
+
+        get_supabase.assert_not_called()
+
+    def test_validate_rankings_rows_normalizes_model_name(self):
+        rows = [
+            {
+                "snapshot_date": "2026-04-20",
+                "model_name": "  model-a  ",
+                "rank": 1,
+                "elo_score": 1200,
+            }
+        ]
+
+        self.assertEqual(
+            crawl_arena.validate_rankings_rows(rows)[0]["model_name"],
+            "model-a",
+        )
+
+    def test_validate_rankings_rows_rejects_bool_integer_fields(self):
+        rows = [
+            {
+                "snapshot_date": "2026-04-20",
+                "model_name": "model-a",
+                "rank": True,
+                "elo_score": 1200,
+            }
+        ]
+
+        with self.assertRaises(ValueError):
+            crawl_arena.validate_rankings_rows(rows)
+
 
 if __name__ == "__main__":
     unittest.main()
