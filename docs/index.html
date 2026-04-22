@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HuggingFace Daily Insights</title>
+    <meta
+      name="description"
+      content="Static dashboard for daily HuggingFace model, arXiv paper, and LMArena CSV snapshots."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Daily CSV snapshots · GitHub Releases</p>
+          <h1>HuggingFace Daily Insights</h1>
+          <p class="lede">
+            A zero-backend dashboard for tracking model momentum, recent AI papers,
+            and LMArena rankings from the latest public release assets.
+          </p>
+          <div class="actions">
+            <a class="button primary" id="latest-release-link" href="https://github.com/Tenormusica2024/huggingface-daily-insights-api/releases/latest">Latest release</a>
+            <a class="button ghost" href="https://github.com/Tenormusica2024/huggingface-daily-insights-api">View repo</a>
+          </div>
+        </div>
+        <aside class="status-card" aria-live="polite">
+          <span class="status-dot" id="status-dot"></span>
+          <div>
+            <p class="status-label">Snapshot status</p>
+            <p class="status-text" id="status-text">Loading latest release…</p>
+          </div>
+        </aside>
+      </section>
+
+      <section class="metrics" aria-label="Snapshot metrics">
+        <article class="metric-card">
+          <span>Models</span>
+          <strong id="models-count">—</strong>
+          <small>tracked in model master</small>
+        </article>
+        <article class="metric-card">
+          <span>Snapshots</span>
+          <strong id="snapshots-count">—</strong>
+          <small>latest 30-day CSV window</small>
+        </article>
+        <article class="metric-card">
+          <span>Papers</span>
+          <strong id="papers-count">—</strong>
+          <small>arXiv AI/ML corpus</small>
+        </article>
+        <article class="metric-card">
+          <span>Arena rows</span>
+          <strong id="arena-count">—</strong>
+          <small>LMArena history</small>
+        </article>
+      </section>
+
+      <section class="grid two-col">
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Momentum</p>
+              <h2>Top model like gains</h2>
+            </div>
+            <span class="pill" id="snapshot-range">—</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Model</th>
+                  <th>Task</th>
+                  <th class="num">Likes Δ</th>
+                  <th class="num">Latest</th>
+                </tr>
+              </thead>
+              <tbody id="trending-body">
+                <tr><td colspan="4">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Research</p>
+              <h2>Recent papers</h2>
+            </div>
+            <span class="pill">arXiv</span>
+          </div>
+          <ul class="paper-list" id="papers-list">
+            <li>Loading…</li>
+          </ul>
+        </article>
+      </section>
+
+      <section class="grid two-col">
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Leaderboard</p>
+              <h2>Latest LMArena top ranks</h2>
+            </div>
+            <span class="pill" id="arena-date">—</span>
+          </div>
+          <div class="table-wrap compact">
+            <table>
+              <thead>
+                <tr>
+                  <th class="num">#</th>
+                  <th>Model</th>
+                  <th class="num">ELO</th>
+                </tr>
+              </thead>
+              <tbody id="arena-body">
+                <tr><td colspan="3">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel accent-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">No server required</p>
+              <h2>How this dashboard works</h2>
+            </div>
+          </div>
+          <p>
+            The page fetches the latest GitHub Release metadata, downloads the CSV
+            assets, and computes a small client-side summary. If asset fetches are
+            rate-limited or blocked, use the release links below.
+          </p>
+          <div class="asset-links" id="asset-links"></div>
+        </article>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
