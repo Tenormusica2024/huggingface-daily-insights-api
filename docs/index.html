@@ -18,7 +18,7 @@
           <h1>HuggingFace Daily Insights</h1>
           <p class="lede">
             A zero-backend dashboard for tracking model momentum, recent AI papers,
-            and LMArena rankings from the latest public release assets.
+            and LMArena rankings from bundled latest release CSV snapshots.
           </p>
           <div class="actions">
             <a class="button primary" id="latest-release-link" href="https://github.com/Tenormusica2024/huggingface-daily-insights-api/releases/latest">Latest release</a>
@@ -130,9 +130,7 @@
             </div>
           </div>
           <p>
-            The page fetches the latest GitHub Release metadata, downloads the CSV
-            assets, and computes a small client-side summary. If asset fetches are
-            rate-limited or blocked, use the release links below.
+            The Pages workflow bundles the latest release CSV files into this site. The browser reads same-origin data files, so no hosted API or server-side secret is required.
           </p>
           <div class="asset-links" id="asset-links"></div>
         </article>

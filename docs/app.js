@@ -1,5 +1,6 @@
 const REPO = "Tenormusica2024/huggingface-daily-insights-api";
-const RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
+const RELEASE_URL = `https://github.com/${REPO}/releases/latest`;
+const DATA_DIR = "data";
 const FILES = ["models.csv", "model_snapshots.csv", "papers.csv", "arena_rankings.csv"];
 
 const $ = (id) => document.getElementById(id);
@@ -58,20 +59,20 @@ function csvParse(text) {
 
 async function fetchText(url) {
   const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  if (!response.ok) throw new Error(`${url}: ${response.status} ${response.statusText}`);
   return response.text();
 }
 
-function assetMap(release) {
-  return Object.fromEntries((release.assets || []).map((asset) => [asset.name, asset.browser_download_url]));
+function dataUrl(name) {
+  return `${DATA_DIR}/${name}`;
 }
 
-function renderAssetLinks(assets) {
+function renderAssetLinks() {
   const wrap = $("asset-links");
   wrap.innerHTML = "";
   FILES.forEach((name) => {
     const link = document.createElement("a");
-    link.href = assets[name] || `https://github.com/${REPO}/releases/latest`;
+    link.href = dataUrl(name);
     link.textContent = name;
     wrap.appendChild(link);
   });
@@ -176,28 +177,28 @@ function escapeHtml(value) {
 }
 
 async function main() {
+  renderAssetLinks();
   try {
-    const release = await fetch(RELEASE_API).then((res) => {
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    const release = await fetch(`${DATA_DIR}/release.json`, { cache: "no-store" }).then((res) => {
+      if (!res.ok) return { tagName: "latest release", url: RELEASE_URL };
       return res.json();
     });
-    $("latest-release-link").href = release.html_url;
-    setStatus(`Loaded ${release.tag_name}`, "ok");
-    const assets = assetMap(release);
-    renderAssetLinks(assets);
+    const releaseUrl = release.url || RELEASE_URL;
+    const releaseTag = release.tagName || release.tag_name || release.name || "latest release";
+    $("latest-release-link").href = releaseUrl;
 
     const [models, snapshots, papers, arena] = await Promise.all(
-      FILES.map(async (name) => csvParse(await fetchText(assets[name])))
+      FILES.map(async (name) => csvParse(await fetchText(dataUrl(name))))
     );
     const data = { models, snapshots, papers, arena };
     renderMetrics(data);
     renderTrending(snapshots);
     renderPapers(papers);
     renderArena(arena);
+    setStatus(`Loaded ${releaseTag}`, "ok");
   } catch (error) {
     console.error(error);
-    setStatus(`Unable to load release data: ${error.message}`, "error");
-    renderAssetLinks({});
+    setStatus(`Unable to load bundled data: ${error.message}`, "error");
   }
 }
 

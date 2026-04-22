@@ -25,6 +25,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download latest CSV release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p docs/data
+          gh release download --repo "${{ github.repository }}" --pattern "*.csv" --dir docs/data --clobber
+          gh release view --repo "${{ github.repository }}" --json tagName,name,publishedAt,url > docs/data/release.json
+          ls -lh docs/data
+
       - uses: actions/configure-pages@v5
         with:
           enablement: true
