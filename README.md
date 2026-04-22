@@ -3,6 +3,10 @@
 [![Daily Crawl](https://github.com/Tenormusica2024/huggingface-daily-insights-api/actions/workflows/daily_crawl.yml/badge.svg)](https://github.com/Tenormusica2024/huggingface-daily-insights-api/actions/workflows/daily_crawl.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+- Live dashboard: <https://tenormusica2024.github.io/huggingface-daily-insights-api/>
+- Latest CSV release: <https://github.com/Tenormusica2024/huggingface-daily-insights-api/releases/latest>
+- Repository: <https://github.com/Tenormusica2024/huggingface-daily-insights-api>
+
 An open-source data pipeline that tracks HuggingFace trending models, arXiv AI/ML papers, and LMArena ELO rankings — storing daily snapshots so you can query **historical time-series data** that the upstream sources do not expose.
 
 **Free to self-host. Free to fork. Free to use the daily CSV dumps.**
