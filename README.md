@@ -7,6 +7,8 @@
 - Latest CSV release: <https://github.com/Tenormusica2024/huggingface-daily-insights-api/releases/latest>
 - Repository: <https://github.com/Tenormusica2024/huggingface-daily-insights-api>
 
+![Live dashboard preview](docs/assets/dashboard-preview.png)
+
 An open-source data pipeline that tracks HuggingFace trending models, arXiv AI/ML papers, and LMArena ELO rankings — storing daily snapshots so you can query **historical time-series data** that the upstream sources do not expose.
 
 **Free to self-host. Free to fork. Free to use the daily CSV dumps.**
