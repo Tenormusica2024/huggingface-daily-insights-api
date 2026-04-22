@@ -8,14 +8,22 @@ LMArena ELO ランキング日次クロールスクリプト
 
 注意: HF Space のデータ更新頻度はまちまちで、数週間単位での更新になる場合がある。
      既存 snapshot_date はスキップするため、重複インポートは発生しない。
+
+運用上の安全策:
+     GitHub Actions では pickle の解析を Supabase secrets なしの step で行い、
+     生成済み JSON を次 step で import する。pickle が信頼境界をまたぐため、
+     secrets を持つプロセスでは pickle.load しない。
 """
 
+import argparse
+import json
 import logging
 import pickle
 import re
 import sys
 import tempfile
 from datetime import date
+from pathlib import Path
 
 from huggingface_hub import hf_hub_download, list_repo_files
 from supabase import Client
@@ -35,6 +43,7 @@ _HF_SPACE_ID = "lmarena-ai/lmarena-leaderboard"
 _PKL_PATTERN = re.compile(r"elo_results_(\d{8})\.pkl")
 # text-full カテゴリのみ取得（テキスト会話の総合 ELO）
 _CATEGORY_PATH = ["text", "full", "leaderboard_table_df"]
+_DEFAULT_EXPORT_PATH = Path("arena_rankings_import.json")
 
 
 def list_elo_pkl_files() -> list[tuple[str, date]]:
@@ -55,7 +64,7 @@ def list_elo_pkl_files() -> list[tuple[str, date]]:
     return results
 
 
-def get_imported_dates(sb: Client) -> set[date]:
+def get_imported_dates(sb: Client) -> set[str]:
     """Supabase に既にインポート済みの snapshot_date セットを返す。"""
     resp = (
         sb.table("arena_rankings")
@@ -65,6 +74,18 @@ def get_imported_dates(sb: Client) -> set[date]:
         .execute()
     )
     return {row["snapshot_date"] for row in resp.data}
+
+
+def latest_pkl_files(limit: int = 3) -> list[tuple[str, date]]:
+    """
+    最新の ELO pkl ファイルを新しい順に最大 limit 件返す。
+
+    secretless export mode では DB に接続せず、重複は import 時の upsert に任せる。
+    """
+    pkl_files = list_elo_pkl_files()
+    if not pkl_files:
+        return []
+    return list(reversed(pkl_files))[:limit]
 
 
 def download_and_parse_pkl(filename: str, snapshot_date: date) -> list[dict]:
@@ -82,8 +103,8 @@ def download_and_parse_pkl(filename: str, snapshot_date: date) -> list[dict]:
         with open(local_path, "rb") as f:
             # SECURITY: pickle.load は任意コード実行の典型経路。
             # 信頼の前提は「lmarena-ai/lmarena-leaderboard HF Space 運営」のみ。
-            # 上流が侵害された場合は本プロセスで RCE に至るため、運用上は Cloud Run /
-            # GitHub Actions の IAM を最小権限に保ち、影響範囲を限定する。
+            # 上流が侵害された場合は本プロセスで RCE に至るため、GitHub Actions では
+            # この関数を Supabase secrets なしの step だけで呼び、DB 書き込みとは分離する。
             data = pickle.load(f)  # noqa: S301
 
     # text/full/leaderboard_table_df を取得
@@ -109,6 +130,36 @@ def download_and_parse_pkl(filename: str, snapshot_date: date) -> list[dict]:
     return rows
 
 
+def export_rankings_json(out_path: Path, max_files: int = 3) -> int:
+    """
+    最新 pkl を secretless に解析し、DB import 用 JSON に書き出す。
+
+    戻り値は抽出できたランキング行数。重複 snapshot_date は import 時の upsert で吸収する。
+    """
+    logger.info("Listing latest elo_results_*.pkl files from HF Space...")
+    files = latest_pkl_files(limit=max_files)
+    if not files:
+        logger.warning("No elo_results_*.pkl files found in HF Space.")
+        out_path.write_text("[]", encoding="utf-8")
+        return 0
+
+    logger.info(f"Exporting rankings from {len(files)} pkl file(s); latest={files[0][0]}")
+    all_rows: list[dict] = []
+    for filename, snapshot_date in files:
+        logger.info(f"Parsing {filename} (snapshot_date={snapshot_date}) ...")
+        rows = download_and_parse_pkl(filename, snapshot_date)
+        if not rows:
+            logger.warning(f"  No data extracted from {filename}, skipping.")
+            continue
+        logger.info(f"  Extracted {len(rows)} model rankings")
+        all_rows.extend(rows)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(all_rows, ensure_ascii=False), encoding="utf-8")
+    logger.info(f"Wrote {len(all_rows)} ranking rows to {out_path}")
+    return len(all_rows)
+
+
 def upsert_rankings(sb: Client, rows: list[dict]) -> tuple[int, int]:
     """
     arena_rankings テーブルに upsert する。
@@ -124,6 +175,26 @@ def upsert_rankings(sb: Client, rows: list[dict]) -> tuple[int, int]:
         except Exception as e:
             logger.warning(f"  Failed to upsert {row['model_name']}: {e}")
             err += 1
+    return ok, err
+
+
+def import_rankings_json(in_path: Path) -> tuple[int, int]:
+    """export_rankings_json が生成した JSON を Supabase に upsert する。"""
+    rows = json.loads(in_path.read_text(encoding="utf-8"))
+    if not isinstance(rows, list):
+        raise ValueError(f"Expected JSON list in {in_path}")
+
+    sb = get_supabase()
+    ok, err = upsert_rankings(sb, rows)
+    logger.info(f"Imported arena rankings: ok={ok}, err={err}")
+
+    if ok + err > 0:
+        error_rate = err / (ok + err)
+        if error_rate > ERROR_RATE_THRESHOLD:
+            logger.error(
+                f"Error rate {error_rate:.1%} exceeded {ERROR_RATE_THRESHOLD:.0%} — exiting with code 1"
+            )
+            sys.exit(1)
     return ok, err
 
 
@@ -174,5 +245,34 @@ def crawl() -> None:
             sys.exit(1)
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="LMArena ELO rankings crawler/importer")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--export-json",
+        nargs="?",
+        const=str(_DEFAULT_EXPORT_PATH),
+        help="Parse latest upstream pkl files and write normalized JSON without DB access",
+    )
+    mode.add_argument(
+        "--import-json",
+        help="Import normalized JSON into Supabase without loading pickle",
+    )
+    parser.add_argument(
+        "--max-files",
+        type=int,
+        default=3,
+        help="Max latest pkl files to parse in --export-json mode",
+    )
+    args = parser.parse_args()
+
+    if args.export_json:
+        export_rankings_json(Path(args.export_json), max_files=args.max_files)
+    elif args.import_json:
+        import_rankings_json(Path(args.import_json))
+    else:
+        crawl()
+
+
 if __name__ == "__main__":
-    crawl()
+    main()
