@@ -31,7 +31,14 @@ jobs:
           import json
 
           migration_file = os.environ["MIGRATION_FILE"]
-          sql_path = Path("sql/migrations") / migration_file
+          migrations_dir = Path("sql/migrations").resolve()
+          sql_path = (migrations_dir / migration_file).resolve()
+
+          try:
+              sql_path.relative_to(migrations_dir)
+          except ValueError:
+              print(f"ERROR: Migration path escapes sql/migrations: {migration_file}", file=sys.stderr)
+              sys.exit(1)
 
           if not sql_path.exists():
               print(f"ERROR: Migration file not found: {sql_path}", file=sys.stderr)

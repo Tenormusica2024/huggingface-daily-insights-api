@@ -179,7 +179,12 @@ To enable the daily GitHub Actions pipeline, add `SUPABASE_URL` and `SUPABASE_KE
 ### 4. Run the API locally
 ```bash
 pip install -r requirements.txt
-uvicorn src.api:app --reload
+PYTHONPATH=src uvicorn api:app --reload
+```
+
+PowerShell:
+```powershell
+$env:PYTHONPATH="src"; uvicorn api:app --reload
 ```
 
 ### 5. Deploy the API container
