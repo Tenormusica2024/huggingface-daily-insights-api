@@ -44,6 +44,9 @@ _PKL_PATTERN = re.compile(r"elo_results_(\d{8})\.pkl")
 # text-full カテゴリのみ取得（テキスト会話の総合 ELO）
 _CATEGORY_PATH = ["text", "full", "leaderboard_table_df"]
 _DEFAULT_EXPORT_PATH = Path("arena_rankings_import.json")
+_ARENA_ROW_KEYS = {"snapshot_date", "model_name", "rank", "elo_score"}
+_MAX_IMPORT_ROWS = 10_000
+_MAX_MODEL_NAME_LEN = 300
 
 
 def list_elo_pkl_files() -> list[tuple[str, date]]:
@@ -154,10 +157,63 @@ def export_rankings_json(out_path: Path, max_files: int = 3) -> int:
         logger.info(f"  Extracted {len(rows)} model rankings")
         all_rows.extend(rows)
 
+    normalized_rows = validate_rankings_rows(all_rows)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(all_rows, ensure_ascii=False), encoding="utf-8")
+    out_path.write_text(json.dumps(normalized_rows, ensure_ascii=False), encoding="utf-8")
     logger.info(f"Wrote {len(all_rows)} ranking rows to {out_path}")
-    return len(all_rows)
+    return len(normalized_rows)
+
+
+def validate_rankings_rows(rows: object) -> list[dict]:
+    """
+    secretless parse job から渡される JSON artifact の schema / size を検証する。
+
+    pickle 側が侵害されても、secrets を持つ import step ではこの正規化済み
+    フィールドだけを DB に upsert する。
+    """
+    if not isinstance(rows, list):
+        raise ValueError("Arena rankings JSON must be a list")
+    if len(rows) > _MAX_IMPORT_ROWS:
+        raise ValueError(f"Arena rankings JSON has too many rows: {len(rows)}")
+
+    normalized: list[dict] = []
+    for idx, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"Row {idx} must be an object")
+        if set(row.keys()) != _ARENA_ROW_KEYS:
+            raise ValueError(f"Row {idx} has unexpected keys: {sorted(row.keys())}")
+
+        snapshot_date = row["snapshot_date"]
+        model_name = row["model_name"]
+        rank = row["rank"]
+        elo_score = row["elo_score"]
+
+        if not isinstance(snapshot_date, str):
+            raise ValueError(f"Row {idx} snapshot_date must be a string")
+        # Validate strict ISO date; store as original YYYY-MM-DD string.
+        parsed_date = date.fromisoformat(snapshot_date)
+        if snapshot_date != parsed_date.isoformat():
+            raise ValueError(f"Row {idx} snapshot_date must be YYYY-MM-DD")
+
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise ValueError(f"Row {idx} model_name must be a non-empty string")
+        if len(model_name) > _MAX_MODEL_NAME_LEN:
+            raise ValueError(f"Row {idx} model_name is too long")
+
+        if not isinstance(rank, int) or isinstance(rank, bool) or rank < 1:
+            raise ValueError(f"Row {idx} rank must be a positive integer")
+        if not isinstance(elo_score, int) or isinstance(elo_score, bool) or not (0 <= elo_score <= 10_000):
+            raise ValueError(f"Row {idx} elo_score must be an integer in range 0..10000")
+
+        normalized.append(
+            {
+                "snapshot_date": snapshot_date,
+                "model_name": model_name.strip(),
+                "rank": rank,
+                "elo_score": elo_score,
+            }
+        )
+    return normalized
 
 
 def upsert_rankings(sb: Client, rows: list[dict]) -> tuple[int, int]:
@@ -181,8 +237,7 @@ def upsert_rankings(sb: Client, rows: list[dict]) -> tuple[int, int]:
 def import_rankings_json(in_path: Path) -> tuple[int, int]:
     """export_rankings_json が生成した JSON を Supabase に upsert する。"""
     rows = json.loads(in_path.read_text(encoding="utf-8"))
-    if not isinstance(rows, list):
-        raise ValueError(f"Expected JSON list in {in_path}")
+    rows = validate_rankings_rows(rows)
 
     sb = get_supabase()
     ok, err = upsert_rankings(sb, rows)
