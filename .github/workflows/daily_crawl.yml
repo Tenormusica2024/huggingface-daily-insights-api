@@ -8,20 +8,54 @@ on:
   workflow_dispatch:
 
 permissions:
-  # Required for creating Releases (contents: write)
-  contents: write
+  contents: read
 
 jobs:
-  crawl:
+  arena-parse:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
+    permissions:
+      # This job parses upstream pickle data. Keep it read-only and do not pass
+      # repository secrets into any step in this job.
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
         with:
-          # Arena pickle parsing runs untrusted upstream pickle code; do not
-          # leave a write-capable Git credential in the workspace.
+          # Pickle parsing runs untrusted upstream code if the source is
+          # compromised; do not leave a git credential in the workspace.
           persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Parse Arena pickle to JSON (no secrets)
+        run: python src/crawl_arena.py --export-json arena_rankings_import.json
+
+      - name: Upload Arena JSON artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arena-rankings-import
+          path: arena_rankings_import.json
+          if-no-files-found: error
+          retention-days: 1
+
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: arena-parse
+    permissions:
+      # Required for creating Releases.
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -44,8 +78,10 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python src/crawl_arxiv.py
 
-      - name: Parse Arena pickle to JSON (no Supabase secrets)
-        run: python src/crawl_arena.py --export-json arena_rankings_import.json
+      - name: Download Arena JSON artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: arena-rankings-import
 
       - name: Import Arena rankings JSON
         env:
