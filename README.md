@@ -1,4 +1,4 @@
-# HuggingFace Daily Insights API
+# Hugging Face Daily Insights API
 
 [![Daily Crawl](https://github.com/Tenormusica2024/huggingface-daily-insights-api/actions/workflows/daily_crawl.yml/badge.svg)](https://github.com/Tenormusica2024/huggingface-daily-insights-api/actions/workflows/daily_crawl.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -12,6 +12,12 @@
 An open-source data pipeline that tracks HuggingFace trending models, arXiv AI/ML papers, and LMArena ELO rankings — storing daily snapshots so you can query **historical time-series data** that the upstream sources do not expose.
 
 **Free to self-host. Free to fork. Free to use the daily CSV dumps.**
+
+## At a glance
+
+- daily snapshots for Hugging Face models, arXiv AI/ML papers, and LMArena rankings
+- three consumption modes: CSV releases, static dashboard, and self-hosted API
+- historical time-series data that the upstream sources do not expose directly
 
 > ⚠️ **Disclaimer**: This project is **not affiliated with HuggingFace, arXiv, or LMArena**. All data is aggregated from public sources; please respect the terms of the original providers.
 
